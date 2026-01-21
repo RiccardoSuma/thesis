@@ -4,133 +4,158 @@ import clip
 from PIL import Image
 from tqdm import tqdm
 
+BATCH_SIZE = 128
+
 class VideoIngestor:
     def __init__(self, db_client, model_name='ViT-B/32'):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model, self.preprocess = clip.load(model_name, device=self.device)
-        self.db = db_client
+        self.db = db_client # Istanza di VectorDB
+
         
-    def process_video(self, video_path, video_filename, fps_sample_rate=1):
-        """
-        Reads video, extracts 1 frame every 'fps_sample_rate' seconds, 
-        encodes them, and stores in Qdrant.
-        """
+        from modules.video.ocr import OCRProcessor
+        self.ocr = OCRProcessor(languages=['en', 'it'])
+
+    def process_video(self, video_path, video_filename, fps_sample_rate=1.0):
         cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS) # Source video FPS (e.g., 30 or 60)
+        if not cap.isOpened(): return
+
+        video_fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        frame_skip = int(video_fps / fps_sample_rate)
         
-        # Calculate how many frames to skip to get 1 extraction per second
-        frame_skip = int(fps / fps_sample_rate)
-        
-        current_frame = 0
-        batch_vectors = []
-        batch_payloads = []
-        BATCH_SIZE = 32 # Send to Qdrant every 32 frames
+        batch_vectors, batch_payloads = [], []
+        last_frame_gray = None
+        last_ocr_text = ""
 
-        """
-        Should BATCH_SIZE become too large (>>50), consider updating the upload_batch 
-        function in qdrant_ops.py from using 'upsert' to 'upload' method for better performance
-        """
+        print(f"--- 🎬 Ingestion Smart: {video_filename} ---")
+        pbar = tqdm(total=total_frames, desc="Frames")
 
-        print(f"Starting ingestion: {video_filename} ({total_frames} frames)")
-        
-        # Progress bar
-        pbar = tqdm(total=total_frames)
-
-        while cap.isOpened():
+        for current_frame in range(0, total_frames, frame_skip):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
             ret, frame = cap.read()
-            if not ret:
-                break
+            if not ret: break
             
-            # Only process if we hit the sample rate (e.g., every 30th frame)
-            if current_frame % frame_skip == 0:
-                # 1. Preprocess Image (OpenCV BGR -> PIL RGB)
-                image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                pil_image = Image.fromarray(image_rgb)
-                
-                # 2. CLIP Encode
-                image_input = self.preprocess(pil_image).unsqueeze(0).to(self.device)
-                with torch.no_grad():
-                    image_features = self.model.encode_image(image_input)
-                    image_features /= image_features.norm(dim=-1, keepdim=True)
-                
-                # 3. Convert to List
-                vector = image_features.cpu().numpy()[0].tolist()
-                
-                # 4. Prepare Metadata
-                timestamp = current_frame / fps
-                payload = {
-                    "type": "video_frame",
-                    "source": video_filename,
-                    "timestamp": timestamp,
-                    "text": "" # Empty for frames
-                }
-                
-                # 5. Add to Batch
-                batch_vectors.append(vector)
-                batch_payloads.append(payload)
-                
-                # 6. Upload if batch is full
-                if len(batch_vectors) >= BATCH_SIZE:
-                    self.db.upload_batch(batch_vectors, batch_payloads)
-                    batch_vectors = []
-                    batch_payloads = []
+            timestamp = round(current_frame / video_fps, 2)
+            
+            # 1. CHECK ESISTENZA SMART
+            # Usiamo chunk_index=0 come sentinella per il video
+            if self.db.point_exists({"source": video_filename, "timestamp": timestamp, "modality": "visual", "chunk_index": 0}):
+                pbar.update(frame_skip)
+                continue
 
-            current_frame += 1
-            pbar.update(1)
+            # 2. CHANGE DETECTION (Soglia a 6.0 basata sui tuoi test)
+            gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (64, 64))
+            skip_ocr = (last_frame_gray is not None and cv2.absdiff(gray, last_frame_gray).mean() < 6.0)
+            last_frame_gray = gray
 
-        # Upload remaining frames
+            # 3. OCR CON RESIZING A 720p
+            if not skip_ocr:
+                img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # Resize a 720p per velocizzare l'estrazione mantenendo qualità
+                img_resized = cv2.resize(img_rgb, (1280, 720), interpolation=cv2.INTER_AREA)
+                ocr_text = self.ocr.extract_text(img_resized).strip()
+                last_ocr_text = ocr_text
+            else:
+                ocr_text = last_ocr_text
+            
+            if not ocr_text:
+                pbar.update(frame_skip)
+                continue
+
+            # 4. CHUNKING & ENCODING
+            words = ocr_text.split()
+            chunk_size = 60
+            overlap = 15
+            chunks = [words[i:i + chunk_size] for i in range(0, len(words), chunk_size - overlap)] if len(words) > chunk_size else [words]
+
+            for idx, chunk_words in enumerate(chunks):
+                text_chunk = " ".join(chunk_words)
+                try:
+                    tokens = clip.tokenize([text_chunk]).to(self.device)
+                    with torch.no_grad():
+                        features = self.model.encode_text(tokens)
+                        features /= features.norm(dim=-1, keepdim=True)
+                    
+                    vector = features.cpu().numpy()[0].tolist()
+                    
+                    payload = {
+                        "type": "video_frame",
+                        "modality": "visual",
+                        "source": video_filename,
+                        "timestamp": timestamp,
+                        "text": text_chunk,      
+                        "full_ocr": ocr_text,    
+                        "chunk_index": idx,         # Cruciale per l'ID unico
+                        "total_chunks": len(chunks),
+                        "is_chunk": True if len(chunks) > 1 else False
+                    }
+                    
+                    batch_vectors.append(vector)
+                    batch_payloads.append(payload)
+                except: 
+                    continue
+
+            # Upload periodico
+            if len(batch_vectors) >= BATCH_SIZE:
+                self.db.upload_batch(batch_vectors, batch_payloads)
+                batch_vectors, batch_payloads = [], []
+
+            pbar.update(frame_skip)
+
         if batch_vectors:
             self.db.upload_batch(batch_vectors, batch_payloads)
-            
+        
         cap.release()
-        print("Video ingestion complete.")
-
+        pbar.close()
+        
     def process_transcript(self, segments, video_filename):
         """
-        Ingests Whisper segments (Text) into the SAME collection.
-        segments: List of dicts [{'start': 0.5, 'text': 'Hello world'}]
+        Ingestione dei segmenti audio Whisper.
+        Sincronizzato con la logica MD5 e modality: 'audio'.
         """
+        print(f"--- 🎙️ Ingesting Transcript: {video_filename} ---")
         batch_vectors = []
         batch_payloads = []
         BATCH_SIZE = 32
 
-        print("Ingesting Transcripts...")
+        for seg in tqdm(segments, desc="Audio Segments"):
+            full_text = seg['text'].strip()
+            if not full_text: continue
 
-        pbar = tqdm(total=len(segments))
+            # CLIP Limit: Tokenizziamo il testo (max 77 token gestiti internamente da clip.tokenize)
+            # Usiamo i primi 60-70 termini per sicurezza
+            text_to_encode = " ".join(full_text.split()[:65])
+            
+            try:
+                tokens = clip.tokenize([text_to_encode]).to(self.device)
+                with torch.no_grad():
+                    # Encoding testuale (simmetrico alla query e alle slide OCR)
+                    text_features = self.model.encode_text(tokens)
+                    text_features /= text_features.norm(dim=-1, keepdim=True)
+                
+                vector = text_features.cpu().numpy()[0].tolist()
+                
+                payload = {
+                    "type": "transcript_segment",
+                    "modality": "audio",
+                    "source": video_filename,
+                    "timestamp": round(seg['start'], 2),
+                    "text": full_text, # Salviamo tutto il testo per il RAG
+                    "is_chunk": False
+                }
+                
+                # Check idempotenza (opzionale qui se fatto nel main, ma sicuro)
+                batch_vectors.append(vector)
+                batch_payloads.append(payload)
 
-        
-        for seg in segments:
-            text = seg['text']
-            timestamp = seg['start'] # Start time of the sentence
-            
-            # 1. CLIP Encode Text
-            text_tokens = clip.tokenize([text[:77]]).to(self.device) # CLIP limit 77 tokens
-            with torch.no_grad():
-                text_features = self.model.encode_text(text_tokens)
-                text_features /= text_features.norm(dim=-1, keepdim=True)
-            
-            # 2. Convert
-            vector = text_features.cpu().numpy()[0].tolist()
-            
-            # 3. Payload
-            payload = {
-                "type": "transcript_segment",
-                "source": video_filename,
-                "timestamp": timestamp,
-                "text": text
-            }
-            
-            batch_vectors.append(vector)
-            batch_payloads.append(payload)
+            except Exception as e:
+                print(f"⚠️ Errore encoding segmento audio: {e}")
+                continue
 
             if len(batch_vectors) >= BATCH_SIZE:
                 self.db.upload_batch(batch_vectors, batch_payloads)
-                batch_vectors = []
-                batch_payloads = []
-            
-            pbar.update(1)
+                batch_vectors, batch_payloads = [], []
 
         if batch_vectors:
             self.db.upload_batch(batch_vectors, batch_payloads)
-        print("Transcript ingestion complete.")

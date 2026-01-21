@@ -1,6 +1,6 @@
 __pycache__/
 *.py[cod]
-venv/
+.venv/
 .env
 .vscode/
 *.pt
@@ -11,4 +11,4 @@ venv/
 *.mp4
 data/audios/
 data/videos/
-qdrant_video_lectures_data/
+qdrant_data/
