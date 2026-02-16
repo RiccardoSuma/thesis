@@ -15,8 +15,8 @@ def free_onedrive_space(file_path):
         pass
 
 def main():
-    VIDEO_DIR = "/home/user0/Suma/Deep_Learning/RecordingsRagusa/"
-    pipeline = Embedder(collection_name="video_collection")
+    VIDEO_DIR = "/home/user0/Suma/ABB/"
+    pipeline = Embedder(collection_name="abb_video_collection")
 
     video_files = sorted([f for f in os.listdir(VIDEO_DIR) if f.endswith(".mp4")])
 

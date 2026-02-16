@@ -60,7 +60,7 @@ def ensure_qdrant_running():
 
 
 class VectorDB:
-    def __init__(self, collection_name="video_collection", vector_size=512):
+    def __init__(self, collection_name="abb_video_collection", vector_size=768): 
         self.client = QdrantClient(url="http://localhost:6333")
         self.collection_name = collection_name
         self.vector_size = vector_size

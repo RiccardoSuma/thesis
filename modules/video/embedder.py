@@ -1,61 +1,83 @@
 import torch
 import gc
 import os
+import shutil
 from modules.storage.qdrant_ops import VectorDB
 from modules.video.video_processing import VideoIngestor
 from modules.audio.video_transcribe import videoTranscriber
 
 class Embedder:
     def __init__(self, collection_name="video_collection"):
+        # Nota: VectorDB ora usa size=768 di default per Nomic
         self.db = VectorDB(collection_name=collection_name)
         self.transcriber = None
         self.ingestor = None
 
-    def _clear_vram(self, model_attr):
-        model = getattr(self, model_attr)
-        if model is not None:
-            print(f"--- Clearing {model_attr} from VRAM ---")
-            # For some models, calling .to('cpu') before del helps release memory faster
-            if hasattr(model, 'model') and hasattr(model.model, 'to'):
-                model.model.to('cpu')
+    def _clear_vram(self, component_name):
+        """
+        Forza bruta per liberare VRAM. 
+        Essenziale quando si switcha da Whisper a Qwen a Nomic.
+        """
+        print(f"🧹 Clearing {component_name} from Memory...")
+        
+        if component_name == 'transcriber' and self.transcriber:
+            if hasattr(self.transcriber, 'model'):
+                del self.transcriber.model
+            del self.transcriber
+            self.transcriber = None
             
-            del model
-            setattr(self, model_attr, None)
-            gc.collect()
-            torch.cuda.empty_cache()
+        if component_name == 'ingestor' and self.ingestor:
+            # L'ingestor nuovo gestisce la sua memoria internamente (carica/scarica Qwen),
+            # ma distruggerlo qui è una sicurezza in più.
+            del self.ingestor
+            self.ingestor = None
 
-    def process_single_video(self, video_path, audio_tmp_path, fps=1.0):
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def process_single_video(self, video_path, audio_tmp_path, fps=0.5):
         video_name = os.path.basename(video_path)
         try:
-            # PHASE 1: AUDIO
-            print(f"--- STARTING PHASE 1: AUDIO [{video_name}] ---")
+            # --- FASE 1: AUDIO (Whisper) ---
+            print(f"\n🎧 [Phase 1/2] Audio Processing: {video_name}")
             self.transcriber = videoTranscriber()
             self.transcriber.extract_audio_from_video(video_path, audio_tmp_path)
-            # Transcription logic + JSON caching happens here
+            
+            # Trascrizione
             transcription = self.transcriber.transcribe(audio_tmp_path, video_name)
+            
+            # IMPORTANTE: Liberiamo subito Whisper dalla VRAM
             self._clear_vram('transcriber')
 
-            # PHASE 2: VIDEO
-            print(f"--- STARTING PHASE 2: VIDEO [{video_name}] ---")
+            # --- FASE 2: VIDEO & HYBRID INGESTION (Qwen + Nomic) ---
+            print(f"\n👁️ [Phase 2/2] Visual & Semantic Ingestion: {video_name}")
             self.ingestor = VideoIngestor(db_client=self.db)
-            # Cycle 1: Visual Ingestion (Frames + OCR)
-            print(f"📸 Indexing Visuals for {video_name}...")
-            self.ingestor.process_video(video_path, video_name, fps)
             
-            # Cycle 2: Spoken Ingestion (Audio Segments)
-            print(f"🎙️ Indexing Audio Transcript for {video_name}...")
-            self.ingestor.process_transcript(transcription['segments'], video_name)
-                
+            # A. Processiamo i Frame (Vision -> Text -> Vector)
+            # Nota: L'ingestor ora gestisce internamente il caricamento/scaricamento di Qwen
+            self.ingestor.process_video(video_path, video_name, fps_sample_rate=fps)
+            
+            # B. Processiamo l'Audio (Text -> Vector con Nomic)
+            # Passiamo i segmenti trascritti al nuovo ingestor che usa Nomic
+            if transcription and 'segments' in transcription:
+                self.ingestor.process_transcript(transcription['segments'], video_name)
+            
             self._clear_vram('ingestor')
             
-            # Clean up the temporary wav file to save disk space
+            # Pulizia file temporanei
             if os.path.exists(audio_tmp_path):
                 os.remove(audio_tmp_path)
-                print(f"🧹 Temporary audio removed: {audio_tmp_path}")
+            
+            #Pulizia cartella temp_frames (opzionale, se vuoi risparmiare spazio disco)
+            temp_frames_dir = os.path.join("modules", "video", "temp_frames")
+            if os.path.exists(temp_frames_dir):
+                shutil.rmtree(temp_frames_dir)
+                os.makedirs(temp_frames_dir, exist_ok=True)
+
+            print(f"✅ SUCCESS: {video_name} fully ingested.")
 
         except Exception as e:
-            print(f"FAILED to process {video_name}: {str(e)}")
+            print(f"❌ CRITICAL ERROR processing {video_name}: {str(e)}")
             self._clear_vram('transcriber')
             self._clear_vram('ingestor')
-            # Optional: re-raise if you want the main loop to handle the failure
-            # raise e
+            raise e
