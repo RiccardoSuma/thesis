@@ -11,7 +11,7 @@ class InfoRetriever:
         self.db = db_wrapper
         self.device = device
         self.model, self.preprocess = clip.load("ViT-B/32", device=device)
-        self._translation_cache = {}  # ✅ Cache per non chiamare Ollama inutilmente
+        self._translation_cache = {}  # Cache per non chiamare Ollama inutilmente
 
     def _encode(self, text):
         text_input = clip.tokenize([text]).to(self.device)
@@ -66,8 +66,8 @@ class InfoRetriever:
 
     def _mmr_selection(self, candidates, top_k, lambda_param=0.9): 
         """
-        TUNING GEMINI: lambda_param = 0.9 (invece di 0.8).
-        Tolleriamo slide simili (es. parte 1 e parte 2 della spiegazione).
+        lambda_param = 0.9 (invece di 0.8).
+        Tollero slide simili (es. parte 1 e parte 2 della spiegazione).
         """
         if not candidates:
             return []
@@ -111,7 +111,7 @@ class InfoRetriever:
         if not candidates:
             return []
 
-        # 0) Dedup hash veloce prima del rerank (metodo GPT)
+        # 0) Dedup hash veloce prima del rerank
         seen = set()
         deduped = []
         for c in candidates:
@@ -159,7 +159,7 @@ class InfoRetriever:
 
             hybrid = penalty * ((v_score * weight_vector) + (k_score * weight_bm25))
 
-            # Gestione sicura del vettore (metodo GPT)
+            # Gestione sicura del vettore
             raw_vec = getattr(cand["point"], "vector", None)
             vec_norm = self._normalize_vector(raw_vec) if raw_vec is not None else None
 
@@ -173,7 +173,7 @@ class InfoRetriever:
         processed.sort(key=lambda x: x["h_score"], reverse=True)
         return processed
 
-    def get_answer(self, query_text: str, top_k: int = 6): # TUNING GEMINI: top_k=6 di default
+    def get_answer(self, query_text: str, top_k: int = 6): 
         print(f"🇮🇹 Query: {query_text}")
         english_query = self._translate_to_english(query_text)
         print(f"🇬🇧 Query Tradotta: {english_query}")
@@ -183,8 +183,8 @@ class InfoRetriever:
 
         initial_limit = 60
         
-        # TUNING GEMINI: Quota Dinamica Aggressiva
-        # Vogliamo almeno 3 slide se possibile.
+
+        # Voglio almeno 3 slide se possibile.
         quota = max(3, top_k // 2)
         
         # Audio prende il resto, ma con un minimo di sicurezza
@@ -210,7 +210,7 @@ class InfoRetriever:
 
         scored_visuals = self._rerank_visual(english_query, visual_pool)
         
-        # Passiamo la quota aggressiva a MMR
+        # Passo la quota aggressiva a MMR
         selected_visuals = self._mmr_selection(scored_visuals, top_k=quota)
 
         for item in selected_visuals:
@@ -239,7 +239,7 @@ class InfoRetriever:
 
         audio_count = 0
         for anchor in audio_candidates:
-            # Calcoliamo la quota audio residua dinamicamente
+            # Calcolo la quota audio residua dinamicamente
             if len(final_context) >= top_k:
                 break
                 

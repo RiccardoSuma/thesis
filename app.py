@@ -4,11 +4,10 @@ from modules.storage.qdrant_ops import VectorDB
 from modules.llm.retrieve_info import InfoRetriever
 from modules.llm.llm_interface import LlamaProcessor 
 
-# 1. THE ENGINE ROOM: Loaded once and shared across all sessions
+# 1. THE ENGINE ROOM
 @st.cache_resource
 def load_rag_system():
     db = VectorDB(collection_name="video_collection")
-    # Nota: Assicurati che in retrieve_info.py __init__ accetti 'db_wrapper'
     retriever = InfoRetriever(db_wrapper=db)
     llm = LlamaProcessor(model_name="mistral")
     return retriever, llm
@@ -35,13 +34,12 @@ class UniBotGUI:
         Bridges the retriever script with the Mistral processor.
         """
         with st.spinner("Searching through lectures..."):
-            # Recuperiamo i payload (che ora contengono 'content_to_use')
             context_payloads = self.retriever.get_answer(user_input, top_k=4)
             
-            # Salviamo nel session_state per l'expander delle fonti
+            # Salvo nel session_state per l'expander delle fonti
             st.session_state["current_context"] = context_payloads
             
-        # Passiamo i payload al llm
+        # Passo i payload al llm
         return self.llm.chat_with_context(user_input, context_payloads)
 
     def display_chat(self):
@@ -73,7 +71,7 @@ class UniBotGUI:
             with st.chat_message("assistant"):
                 full_response = st.write_stream(self.response_generator(prompt))
                 
-                # Recuperiamo i payload salvati in session_state
+
                 payloads = st.session_state.get("current_context", [])
                 
                 if payloads:
@@ -84,10 +82,7 @@ class UniBotGUI:
                             
                             st.write(f"**Fonte {i+1}** (Score: {score_val:.4f}) - 🔊 {m_type}")
                             st.markdown(f"**File:** `{p.get('source')}` @ {p.get('timestamp')}s")
-                            
-                            # --- CORREZIONE QUI SOTTO ---
-                            # Usiamo content_to_use (generato dal retriever) come prima scelta
-                            # Fallback su 'text' o messaggio di default se vuoto
+
                             content = p.get('content_to_use') or p.get('text') or "Nessun testo estratto."
                             st.info(content)
                             # ----------------------------

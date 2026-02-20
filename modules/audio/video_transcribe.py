@@ -13,7 +13,7 @@ Optimized for Linux Worker Node performance.
 class videoTranscriber:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        # Turbo is excellent for your 13-lecture scale
+        # Turbo is excellent
         self.model = whisper.load_model("turbo", device=self.device)
         self.cache_dir = "transcripts_cache"
         os.makedirs(self.cache_dir, exist_ok=True)
@@ -35,7 +35,6 @@ class videoTranscriber:
         print(f"Starting transcription of {video_filename}...")
         
         # 2. Linux Node Optimization: Use FP16 for Speed
-        # Only use False if you get NaN errors, but on A100/RTX nodes, True is 2x-3x faster.
         use_fp16 = True if self.device == "cuda" else False
         
         try:

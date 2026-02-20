@@ -16,7 +16,7 @@ class LlamaProcessor:
 
     def format_context(self, payloads):
         context_str = ""
-        # Ordiniamo per timestamp per coerenza
+        # Ordino per timestamp per coerenza
         sorted_payloads = sorted(payloads, key=lambda x: (x.get('source'), x.get('timestamp', 0)))
 
         for i, p in enumerate(sorted_payloads):
@@ -41,7 +41,7 @@ class LlamaProcessor:
 
         # --- MODIFICA CHIAVE: Prompt anti-ripetizione ---
         prompt = f"""
-        Sei UniBOT, un assistente per tesi magistrale.
+        Sei UniBOT, un assistente esperto di deep learning.
         Il tuo compito è sintetizzare una risposta FLUIDA e NON RIPETITIVA basata sui frammenti forniti.
 
         DATI (XML):

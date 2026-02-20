@@ -10,7 +10,7 @@ class VideoIngestor:
     def __init__(self, db_client, model_name='ViT-B/32'):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model, self.preprocess = clip.load(model_name, device=self.device)
-        self.db = db_client # Istanza di VectorDB
+        self.db = db_client 
 
         
         from modules.video.ocr import OCRProcessor
@@ -39,12 +39,12 @@ class VideoIngestor:
             timestamp = round(current_frame / video_fps, 2)
             
             # 1. CHECK ESISTENZA SMART
-            # Usiamo chunk_index=0 come sentinella per il video
+            # Uso chunk_index=0 come sentinella per il video
             if self.db.point_exists({"source": video_filename, "timestamp": timestamp, "modality": "visual", "chunk_index": 0}):
                 pbar.update(frame_skip)
                 continue
 
-            # 2. CHANGE DETECTION (Soglia a 6.0 basata sui tuoi test)
+            # 2. CHANGE DETECTION (Soglia a 6.0 basata sui test)
             gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (64, 64))
             skip_ocr = (last_frame_gray is not None and cv2.absdiff(gray, last_frame_gray).mean() < 6.0)
             last_frame_gray = gray
@@ -123,8 +123,8 @@ class VideoIngestor:
             full_text = seg['text'].strip()
             if not full_text: continue
 
-            # CLIP Limit: Tokenizziamo il testo (max 77 token gestiti internamente da clip.tokenize)
-            # Usiamo i primi 60-70 termini per sicurezza
+            # CLIP Limit: Tkenizzo il testo (max 77 token gestiti internamente da clip.tokenize)
+            # Uso i primi 60-70 termini per sicurezza
             text_to_encode = " ".join(full_text.split()[:65])
             
             try:
@@ -141,11 +141,10 @@ class VideoIngestor:
                     "modality": "audio",
                     "source": video_filename,
                     "timestamp": round(seg['start'], 2),
-                    "text": full_text, # Salviamo tutto il testo per il RAG
+                    "text": full_text, # Salvo tutto il testo per il RAG
                     "is_chunk": False
                 }
                 
-                # Check idempotenza (opzionale qui se fatto nel main, ma sicuro)
                 batch_vectors.append(vector)
                 batch_payloads.append(payload)
 

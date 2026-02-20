@@ -48,7 +48,7 @@ class Embedder:
                 
             self._clear_vram('ingestor')
             
-            # Clean up the temporary wav file to save disk space
+
             if os.path.exists(audio_tmp_path):
                 os.remove(audio_tmp_path)
                 print(f"🧹 Temporary audio removed: {audio_tmp_path}")
@@ -57,5 +57,3 @@ class Embedder:
             print(f"FAILED to process {video_name}: {str(e)}")
             self._clear_vram('transcriber')
             self._clear_vram('ingestor')
-            # Optional: re-raise if you want the main loop to handle the failure
-            # raise e

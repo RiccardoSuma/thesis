@@ -22,7 +22,7 @@ def ensure_qdrant_running():
         print("⚠️ Qdrant is down. Automating startup...")
 
     # Step 2: Define the Command Waterfall
-    # We try Compose first, then fallback to raw Docker run
+    # Compose first, then fallback to raw Docker run
     cwd = os.getcwd()
     commands = [
         ["sudo", "docker", "compose", "up", "-d"],
@@ -36,7 +36,7 @@ def ensure_qdrant_running():
     started = False
     for cmd in commands:
         try:
-            # We use capture_output=False so you can see the sudo password prompt if needed
+
             print(f"🔄 Trying: {' '.join(cmd)}")
             result = subprocess.run(cmd, check=True)
             if result.returncode == 0:
@@ -45,7 +45,7 @@ def ensure_qdrant_running():
         except Exception as e:
             continue
 
-    # Step 3: Verify Health
+    # Step 3: Verify
     if started:
         print("⏳ Waiting for Qdrant health check...")
         for _ in range(10):
@@ -79,7 +79,7 @@ class VectorDB:
     def _generate_id(self, payload):
         """
         Genera un MD5 deterministico unico.
-        Includendo 'chunk_index' evitiamo che i vari pezzi di una slide si sovrascrivano.
+        Includendo 'chunk_index' evito che i vari pezzi di una slide si sovrascrivano.
         """
         source = payload.get('source', '')
         ts = payload.get('timestamp', 0)
@@ -113,17 +113,15 @@ class VectorDB:
 
     def point_exists(self, payload_or_id):
             """Verifica se un punto esiste. Accetta sia il payload (dict) che l'ID (str)."""
-            # DEBUG: Vediamo cosa arriva davvero
-            #print(f"DEBUG: point_exists received type: {type(payload_or_id)}") 
 
             if isinstance(payload_or_id, dict):
-                # Se è un dict, estraiamo l'ID
+                # Se è un dict, estraggo l'ID
                 point_id = self._generate_id(payload_or_id)
             elif isinstance(payload_or_id, str):
-                # Se è già una stringa (ID), la usiamo direttamente
+                # Se è già una stringa (ID), la uso direttamente
                 point_id = payload_or_id
             else:
-                # Se arriva altro, evitiamo il crash e restituiamo False
+                # Se arriva altro, evito il crash e restituiamo False
                 return False
                 
             try:
@@ -137,7 +135,6 @@ class VectorDB:
             except Exception:
                 return False
             
-    # modules/storage/qdrant_ops.py
 
     def search(self, query_vector, top_k=5, query_filter=None, with_vectors=False):
         """
@@ -150,7 +147,7 @@ class VectorDB:
             query_filter=query_filter, 
             limit=top_k,
             with_payload=True,
-            with_vectors=with_vectors # <--- CRUCIALE
+            with_vectors=with_vectors 
         ).points
 
     def scroll(self, scroll_filter, limit=15):
