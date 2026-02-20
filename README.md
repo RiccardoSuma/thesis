@@ -13,10 +13,10 @@ The project compares and implements two different approaches to Retrieval-Augmen
 | Feature | **Industrial Implementation** (`ABB`) | **Academic Baseline** (`University`) |
 | :--- | :--- | :--- |
 | **Primary Goal** | Industrial scalability and precision on technical video | Conceptual validation and academic portability  |
-| **Embeddings** | **Nomic** (Text) + **CLIP** (Visual) | **CLIP** (Vision-Text Alignment)  |
-| **Data Ingestion** | Whisper (ASR) + Multimodal Ingestion | OCR-based text extraction from documents  |
-| **Vector Store** | **Qdrant** (Hybrid Search) | In-memory / Simple Vector Store  |
-| **LLM Inference** | **Qwen / Llama** (Optimized for reasoning)  | **Mistral** (Baseline performance)  |
+| **Embeddings** | **Nomic**  | **CLIP**   |
+| **Data Ingestion** | Whisper (ASR) + Multimodal Ingestion using QWEN | Whisper (ASR) + OCR-based text extraction from frames  |
+| **Vector Store** | **Qdrant** (Hybrid Search) | **Qdrant** (Hybrid Search)  |
+| **LLM Inference** | **Qwen** (Optimized for reasoning)  | **Mistral** (Baseline performance)  |
 
 ---
 
@@ -40,7 +40,7 @@ A streamlined version developed to test core retrieval and inference concepts in
 * **Languages**: Python (NumPy, PyTorch).
 * **GenAI**: Whisper (OpenAI), CLIP, Llama, Qwen, Mistral.
 * **Vector DB**: Qdrant.
-* **Frameworks**: Streamlit, Transformers, HuggingFace, Git.
+* **Frameworks**: Streamlit, Transformers, HuggingFace, Ollama, Git.
 
 ## 👨‍💻 Author
 **Riccardo Suma**
