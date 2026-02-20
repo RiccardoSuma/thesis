@@ -46,19 +46,18 @@ class Embedder:
             # Trascrizione
             transcription = self.transcriber.transcribe(audio_tmp_path, video_name)
             
-            # IMPORTANTE: Liberiamo subito Whisper dalla VRAM
+            # IMPORTANTE: Libero subito Whisper dalla VRAM
             self._clear_vram('transcriber')
 
             # --- FASE 2: VIDEO & HYBRID INGESTION (Qwen + Nomic) ---
             print(f"\n👁️ [Phase 2/2] Visual & Semantic Ingestion: {video_name}")
             self.ingestor = VideoIngestor(db_client=self.db)
             
-            # A. Processiamo i Frame (Vision -> Text -> Vector)
-            # Nota: L'ingestor ora gestisce internamente il caricamento/scaricamento di Qwen
+            # A. Processo i Frame (Vision -> Text -> Vector)
             self.ingestor.process_video(video_path, video_name, fps_sample_rate=fps)
             
             # B. Processiamo l'Audio (Text -> Vector con Nomic)
-            # Passiamo i segmenti trascritti al nuovo ingestor che usa Nomic
+            # Passo i segmenti trascritti al nuovo ingestor che usa Nomic
             if transcription and 'segments' in transcription:
                 self.ingestor.process_transcript(transcription['segments'], video_name)
             
@@ -68,7 +67,7 @@ class Embedder:
             if os.path.exists(audio_tmp_path):
                 os.remove(audio_tmp_path)
             
-            #Pulizia cartella temp_frames (opzionale, se vuoi risparmiare spazio disco)
+            #Pulizia cartella temp_frames (se voglio risparmiare spazio disco)
             temp_frames_dir = os.path.join("modules", "video", "temp_frames")
             if os.path.exists(temp_frames_dir):
                 shutil.rmtree(temp_frames_dir)

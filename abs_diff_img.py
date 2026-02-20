@@ -11,7 +11,7 @@ def calculate_frame_diff(img1_path, img2_path):
         print("❌ Errore: Uno dei file non è stato trovato.")
         return
 
-    # 2. Pre-processing (Lo stesso che fa il tuo ingestore)
+    # 2. Pre-processing
     gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
     

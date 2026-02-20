@@ -4,7 +4,7 @@ from sentence_transformers import SentenceTransformer
 class NomicEmbedder:
     def __init__(self, device=None):
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
-        # Usiamo il modello v1.5 che supporta Matryoshka (opzionale) e long context
+        # Uso il modello v1.5 che supporta Matryoshka (opzionale) e long context
         print(f"🧠 Loading Nomic-Embed-Text v1.5 on {self.device}...")
         self.model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True, device=self.device)
         self.model.eval()

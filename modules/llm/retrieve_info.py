@@ -9,7 +9,7 @@ from modules.vectorization.nomic_wrapper import NomicEmbedder
 class InfoRetriever:
     def __init__(self, db_wrapper, device=None):
         self.db = db_wrapper
-        # Inizializziamo Nomic invece di CLIP
+        # Inizializzo Nomic invece di CLIP
         self.embedder = NomicEmbedder(device=device)
         self._translation_cache = {}  # Cache per risparmiare chiamate a Ollama
 
@@ -32,7 +32,7 @@ class InfoRetriever:
         if key in self._translation_cache:
             return self._translation_cache[key]
 
-        # Se la query è già molto breve o sembra codice, evitiamo Ollama
+        # Se la query è già molto breve o sembra codice, evito Ollama
         if len(key.split()) < 3 and key.isascii():
              return key
 
@@ -85,7 +85,7 @@ class InfoRetriever:
         # Ordina per score ibrido iniziale
         candidates.sort(key=lambda x: x["h_score"], reverse=True)
         
-        # Se non abbiamo vettori (caso raro), ritorniamo i top_k grezzi
+        # Se non ho vettori (caso raro), ritorno i top_k grezzi
         if any(c.get("vector_norm") is None for c in candidates):
             return candidates[:top_k]
 
@@ -161,7 +161,7 @@ class InfoRetriever:
                 if max_bm25 > 0:
                     bm25_norm = [float(s) / max_bm25 for s in bm25_raw]
             except Exception:
-                pass # Se BM25 fallisce, usiamo solo vettori
+                pass # Se BM25 fallisce, uso solo vettori
 
         processed = []
         for i, cand in enumerate(candidates):
@@ -197,16 +197,16 @@ class InfoRetriever:
         print(f"   🇬🇧 Translated: {english_query}")
 
         # 2. Embedding (Nomic gestisce sia ITA che ENG, ma meglio specializzare)
-        # Usiamo query ENG per le slide (descritte in ENG)
+        # Uso query ENG per le slide (descritte in ENG)
         vector_visual = self._encode(english_query)
-        # Usiamo query ITA per l'audio (trascritto in ITA)
+        # Uso query ITA per l'audio (trascritto in ITA)
         vector_audio = self._encode(query_text)
 
         final_context = []
         seen_ids = set()
 
         # --- A. RICERCA VISUALE (SLIDE INTELLIGENTI) ---
-        # Cerchiamo di più inizialmente per poi filtrare con Rerank/MMR
+        # Cerco di più inizialmente per poi filtrare con Rerank/MMR
         visual_candidates = self.db.search(
             query_vector=vector_visual,
             top_k=30, 
@@ -216,14 +216,14 @@ class InfoRetriever:
 
         visual_pool = []
         for p in visual_candidates:
-            # Ora usiamo 'text' che contiene la descrizione ricca di Qwen
+            # Ora uso 'text' che contiene la descrizione ricca di Qwen
             content = p.payload.get("text", "")
             if len(content) > 10:
                 visual_pool.append({"point": p, "content": content})
 
         # Rerank & MMR
         scored_visuals = self._rerank_visual(english_query, visual_pool)
-        selected_visuals = self._mmr_selection(scored_visuals, top_k=4) # Vogliamo max 4 slide forti
+        selected_visuals = self._mmr_selection(scored_visuals, top_k=4) # Voglio max 4 slide forti
 
         for item in selected_visuals:
             p = item["point"].payload
@@ -238,7 +238,7 @@ class InfoRetriever:
             seen_ids.add(item["point"].id)
 
         # --- B. RICERCA AUDIO (TRASCRIZIONI) ---
-        # Riempiamo lo spazio rimanente con l'audio
+        # Riempio lo spazio rimanente con l'audio
         slots_left = top_k - len(final_context) + 2 # +2 di bonus
         
         if slots_left > 0:
@@ -252,8 +252,8 @@ class InfoRetriever:
             for anchor in audio_candidates:
                 if anchor.id in seen_ids: continue
                 
-                # Context Expansion: prendiamo anche i segmenti vicini
-                # (Semplificato qui: prendiamo solo il segmento stesso per ora, 
+                # Context Expansion: prendo anche i segmenti vicini
+                # (Semplificato qui: prendo solo il segmento stesso per ora, 
                 # la window expansion si può fare con scroll se necessario)
                 p = anchor.payload
                 text = p.get("text", "")
@@ -268,5 +268,5 @@ class InfoRetriever:
                     })
                     seen_ids.add(anchor.id)
 
-        # Ordiniamo per timestamp per coerenza narrativa
+        # Ordino per timestamp per coerenza narrativa
         return sorted(final_context, key=lambda x: (x["source"], x["timestamp"]))

@@ -2,7 +2,7 @@ import ollama
 import re
 
 class LlamaProcessor:
-    def __init__(self, model_name="mistral"):
+    def __init__(self, model_name="qwen2.5"):
         self.model_name = model_name
 
     def clean_context(self, text):
@@ -16,7 +16,7 @@ class LlamaProcessor:
 
     def format_context(self, payloads):
         context_str = ""
-        # Ordiniamo per timestamp per coerenza
+        # Ordino per timestamp per coerenza
         sorted_payloads = sorted(payloads, key=lambda x: (x.get('source'), x.get('timestamp', 0)))
 
         for i, p in enumerate(sorted_payloads):
@@ -39,7 +39,7 @@ class LlamaProcessor:
     def chat_with_context(self, query_text, context_payloads):
         xml_context = self.format_context(context_payloads)
 
-        # --- MODIFICA CHIAVE: Prompt anti-ripetizione ---
+        # --- Prompt anti-ripetizione ---
         prompt = f"""
         Sei ABBot, un assistente per il supporto tecnico industriale.
         Il tuo compito è sintetizzare una risposta FLUIDA e NON RIPETITIVA basata sui frammenti forniti.
@@ -60,7 +60,7 @@ class LlamaProcessor:
 
             
 
-        2.  **STILE:** Usa un tono accademico e professionale. Non usare frasi come "Nel chunk X viene detto...", ma esponi direttamente il concetto. Per casi numerici specifici, usa "ad esempio" o "come descritto in [Fonte]".
+        2.  **STILE:** Usa un tono professionale. Non usare frasi come "Nel chunk X viene detto...", ma esponi direttamente il concetto. Per casi numerici specifici, usa "ad esempio" o "come descritto in [Fonte]".
 
         
         3.  **GERARCHIA:**
@@ -79,7 +79,7 @@ class LlamaProcessor:
             options={
                 "temperature": 0.1,  # Bassa per rigore, ma non 0 assoluto per permettere un minimo di riformulazione linguistica
                 "num_ctx": 8192,
-                "repeat_penalty": 1.1 # PENALITÀ ALTA PER LE RIPETIZIONI (Fondamentale)
+                "repeat_penalty": 1.1 # PENALITÀ ALTA PER LE RIPETIZIONI
             }
         )
         

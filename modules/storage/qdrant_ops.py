@@ -13,7 +13,7 @@ def ensure_qdrant_running():
     """Automates Qdrant startup using a waterfall of Docker commands."""
     url = "http://localhost:6333/healthz"
     
-    # Step 1: Check if already running
+
     try:
         requests.get(url, timeout=2)
         print("✅ Qdrant is already running.")
@@ -21,13 +21,11 @@ def ensure_qdrant_running():
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         print("⚠️ Qdrant is down. Automating startup...")
 
-    # Step 2: Define the Command Waterfall
-    # We try Compose first, then fallback to raw Docker run
+
     cwd = os.getcwd()
     commands = [
         ["sudo", "docker", "compose", "up", "-d"],
         ["sudo", "docker-compose", "up", "-d"],
-        # The 'Direct Run' fallback if Compose is missing/broken
         ["sudo", "docker", "run", "-d", "--name", "qdrant_video", 
          "-p", "6333:6333", "-p", "6334:6334", 
          "-v", f"{cwd}/qdrant_data:/qdrant/storage", "qdrant/qdrant"]
@@ -36,7 +34,7 @@ def ensure_qdrant_running():
     started = False
     for cmd in commands:
         try:
-            # We use capture_output=False so you can see the sudo password prompt if needed
+
             print(f"🔄 Trying: {' '.join(cmd)}")
             result = subprocess.run(cmd, check=True)
             if result.returncode == 0:
@@ -45,7 +43,7 @@ def ensure_qdrant_running():
         except Exception as e:
             continue
 
-    # Step 3: Verify Health
+
     if started:
         print("⏳ Waiting for Qdrant health check...")
         for _ in range(10):
@@ -84,7 +82,6 @@ class VectorDB:
         source = payload.get('source', '')
         ts = payload.get('timestamp', 0)
         mod = payload.get('modality', 'unknown')
-        # Usiamo 0 come default se il punto non è un chunk (es. l'audio)
         idx = payload.get('chunk_index', 0) 
         
         unique_str = f"{source}_{ts}_{mod}_{idx}"
@@ -113,17 +110,15 @@ class VectorDB:
 
     def point_exists(self, payload_or_id):
             """Verifica se un punto esiste. Accetta sia il payload (dict) che l'ID (str)."""
-            # DEBUG: Vediamo cosa arriva davvero
-            #print(f"DEBUG: point_exists received type: {type(payload_or_id)}") 
 
             if isinstance(payload_or_id, dict):
-                # Se è un dict, estraiamo l'ID
+                # Se è un dict, estraggo l'ID
                 point_id = self._generate_id(payload_or_id)
             elif isinstance(payload_or_id, str):
-                # Se è già una stringa (ID), la usiamo direttamente
+                # Se è già una stringa (ID), la uso direttamente
                 point_id = payload_or_id
             else:
-                # Se arriva altro, evitiamo il crash e restituiamo False
+                # Se arriva altro, evito il crash e ritorno False
                 return False
                 
             try:
@@ -137,7 +132,7 @@ class VectorDB:
             except Exception:
                 return False
             
-    # modules/storage/qdrant_ops.py
+
 
     def search(self, query_vector, top_k=5, query_filter=None, with_vectors=False):
         """
@@ -150,7 +145,7 @@ class VectorDB:
             query_filter=query_filter, 
             limit=top_k,
             with_payload=True,
-            with_vectors=with_vectors # <--- CRUCIALE
+            with_vectors=with_vectors 
         ).points
 
     def scroll(self, scroll_filter, limit=15):

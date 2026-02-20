@@ -38,7 +38,7 @@ class VideoIngestor:
         self._load_model_if_needed()
         results = []
         
-        # Prompt standard che ti ha dato buoni risultati
+        # Prompt standard che mi ha dato buoni risultati
         prompt_text = "Analyze this slide. Extract title, charts/diagrams details, and key text."
 
         print(f"🚀 Processing {len(frame_data_list)} frames...")
@@ -99,12 +99,12 @@ class VideoIngestor:
                 skipped_count += 1
                 continue
 
-            # Se non esiste, leggiamo il frame
+            # Se non esiste, leggo il frame
             cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
             ret, frame = cap.read()
             if not ret: break
             
-            # Change Detection Semplice (Quello che ti piaceva)
+            # Change Detection Semplice
             gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (64, 64))
             if last_frame_gray is not None:
                 score = cv2.absdiff(gray, last_frame_gray).mean()
@@ -200,6 +200,3 @@ class VideoIngestor:
                 batch_vectors, batch_payloads = [], []
         if batch_vectors: self.db.upload_batch(batch_vectors, batch_payloads)
         embedder.free_vram()
-
-# Helper function necessaria per Qwen2-VL (mettila fuori dalla classe o nel file)
-from qwen_vl_utils import process_vision_info

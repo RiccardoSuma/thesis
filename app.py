@@ -9,8 +9,18 @@ from modules.storage.qdrant_ops import VectorDB
 from modules.llm.retrieve_info import InfoRetriever
 from modules.llm.llm_interface import LlamaProcessor 
 
-# --- AUTO-START OLLAMA FUNCTION ---
-# --- AUTO-START OLLAMA FUNCTION (CORRETTA) ---
+
+def format_timestamp(seconds):
+    """Converte secondi in formato MM:SS"""
+    try:
+        sec = float(seconds)
+        m = int(sec // 60)
+        s = int(sec % 60)
+        return f"{m:02d}:{s:02d}"
+    except (ValueError, TypeError):
+        return "00:00"
+
+
 def ensure_ollama_started():
     """
     Controlla se Ollama è attivo sulla porta 11434.
@@ -36,7 +46,6 @@ def ensure_ollama_started():
             stderr=subprocess.DEVNULL
         )
         
-        # Diamo 2 secondi di respiro al server per inizializzarsi
         time.sleep(2)
         
         # 3. Polling (attesa attiva) finché non risponde
@@ -50,7 +59,7 @@ def ensure_ollama_started():
             except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
                 time.sleep(1)
         
-        return False # Timeout dopo i tentativi
+        return False
         
     except FileNotFoundError:
         st.error("❌ Comando 'ollama' non trovato. Assicurati di averlo installato.")
@@ -61,16 +70,14 @@ def ensure_ollama_started():
 # 1. THE ENGINE ROOM: Loaded once and shared across all sessions
 @st.cache_resource
 def load_rag_system():
-    # Inizializziamo il DB
+    # Inizializzo il DB
     db = VectorDB(collection_name="abb_video_collection")
     
-    # Inizializziamo il Retriever
+    # Inizializzo il Retriever
     retriever = InfoRetriever(db_wrapper=db)
     
-    # Inizializziamo il LLM (Mistral o Llama3)
-    # Nota: Questo passaggio richiede che Ollama sia GIA' attivo,
-    # ecco perché facciamo il controllo nel main prima di chiamare questa funzione.
-    llm = LlamaProcessor(model_name="mistral")
+    # Inizializzo il LLM (Mistral o Llama3)
+    llm = LlamaProcessor(model_name="qwen2.5")
     
     return retriever, llm
 
@@ -79,7 +86,6 @@ class UniBotGUI:
         self.bot_name = bot_name
         self.retriever = retriever
         self.llm = llm
-        # Nota: setup_page rimosso da qui perché set_page_config va nel main
         self._initialize_session_state()
 
     def _initialize_session_state(self):
@@ -91,13 +97,13 @@ class UniBotGUI:
         Ponte tra il retriever e il processore Mistral.
         """
         with st.spinner("🧠 Searching memory..."):
-            # Recuperiamo i payload (che ora contengono 'content_to_use')
+            # Recupero i payload 
             context_payloads = self.retriever.get_answer(user_input, top_k=4)
             
-            # Salviamo nel session_state per l'expander delle fonti
+            # Salvo nel session_state per l'expander delle fonti
             st.session_state["current_context"] = context_payloads
             
-        # Passiamo i payload al llm per la generazione streaming
+        # Passo i payload al llm per la generazione streaming
         return self.llm.chat_with_context(user_input, context_payloads)
 
     def display_chat(self):
@@ -105,11 +111,20 @@ class UniBotGUI:
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
-                # Se il messaggio ha delle fonti salvate nella history, mostra l'expander
+                
+                # Visualizzazione Fonti Storiche Pulita
                 if "sources" in message and message["sources"]:
-                    with st.expander("📚 Fonti storiche"):
+                    with st.expander("📚 Riferimenti (Video & Slide)"):
                         for i, p in enumerate(message["sources"]):
-                            st.caption(f"**Fonte {i+1}:** {p.get('source')} @ {p.get('timestamp')}s")
+                            # Formattazione dati
+                            time_str = format_timestamp(p.get('timestamp', 0))
+                            source_name = p.get('source', 'Unknown').replace('.mp4', '').replace('_', ' ')
+                            
+                            # Icona in base alla modalità
+                            icon = "🖼️" if p.get('modality') == 'visual' else "🎙️"
+                            
+                            # Riga formattata: Icona | Nome File | Timestamp
+                            st.markdown(f"**{i+1}.** {icon} `{source_name}` — ⏱️ **{time_str}**")
 
     def run(self):
         # Header GUI
@@ -121,6 +136,7 @@ class UniBotGUI:
             st.header("System Status")
             st.success("✅ Ollama Engine: Online")
             st.success("✅ Qdrant DB: Connected")
+            st.info("💡 Suggerimento: Chiedi 'Per cosa sta DAFS?'")
             st.markdown("---")
             if st.button("🗑️ Clear Chat History"):
                 st.session_state.messages = []
@@ -129,7 +145,7 @@ class UniBotGUI:
         self.display_chat()
 
         # Input Utente
-        if prompt := st.chat_input("Hi, I'm ABBot, what can I help you with?"):
+        if prompt := st.chat_input("Ask me about ABB videos..."):
             # 1. Mostra messaggio utente
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
@@ -137,31 +153,37 @@ class UniBotGUI:
 
             # 2. Genera risposta assistente
             with st.chat_message("assistant"):
-                # write_stream consuma il generatore
                 full_response = st.write_stream(self.response_generator(prompt))
                 
-                # Recuperiamo i payload salvati in session_state durante la generazione
+                # Recupero i payload
                 payloads = st.session_state.get("current_context", [])
                 
                 if payloads:
-                    with st.expander("🔍 Analisi Fonti (RAG)"):
+
+                    with st.expander("🔍 Analisi Fonti (RAG)", expanded=False):
                         for i, p in enumerate(payloads):
+                            # Dati
                             score_val = p.get('score', 0.0) 
                             m_type = p.get('modality', 'unknown').upper()
+                            time_str = format_timestamp(p.get('timestamp', 0))
+                            src_clean = p.get('source', '').replace('.mp4', '')
                             
-                            st.markdown(f"**#{i+1} [{m_type}]** (Score: `{score_val:.4f}`)")
-                            st.caption(f"📁 `{p.get('source')}` ⏱️ `{p.get('timestamp')}s`")
+                            # Icona
+                            icon = "🖼️ Slide" if m_type == "VISUAL" else "🎙️ Audio"
                             
-                            # Logica di visualizzazione contenuto
+                            # Layout a colonne per ordine
+                            c1, c2 = st.columns([3, 1])
+                            with c1:
+                                st.markdown(f"**#{i+1} {icon}** — `{src_clean}`")
+                            with c2:
+                                st.markdown(f"⏱️ **{time_str}**")
+                            
+                            # Contenuto (Testo estratto)
                             content = p.get('content_to_use') or p.get('text') or "Nessun testo."
-                            st.info(content)
-                            
-                            # Se c'è un'immagine, potremmo mostrarla (opzionale)
-                            if p.get('image_path') and m_type == "VISUAL":
-                                try:
-                                    st.image(p.get('image_path'), width=200)
-                                except:
-                                    pass
+                            st.caption(f"Score: {score_val:.4f}")
+                            st.info(content[:300] + "..." if len(content) > 300 else content) # Tronca se lunghissimo
+                            st.divider()
+                    # ----------------------------------
 
             # 3. Salva tutto nella history
             st.session_state.messages.append({
@@ -171,11 +193,11 @@ class UniBotGUI:
             })
 
 if __name__ == "__main__":
-    # 1. CONFIGURAZIONE PAGINA (Deve essere la PRIMA istruzione Streamlit)
+    # 1. CONFIGURAZIONE PAGINA
     st.set_page_config(page_title="ABBot", layout="wide")
 
     # 2. CONTROLLO OLLAMA (Prima di caricare qualsiasi modello)
-    # Se Ollama è spento, proviamo ad accenderlo e mostriamo uno spinner
+    # Se Ollama è spento, provo ad accenderlo e mostriamo uno spinner
     if not ensure_ollama_started():
         with st.spinner("🔌 Wake up Neo... (Starting Ollama Server in background)"):
              if not ensure_ollama_started(): # Doppio check con attesa
@@ -183,7 +205,7 @@ if __name__ == "__main__":
                 st.warning("Apri un terminale e scrivi: 'ollama serve'")
                 st.stop()
     
-    # 3. CARICAMENTO SISTEMA (Ora sicuro perché Ollama è attivo)
+    # 3. CARICAMENTO SISTEMA
     try:
         retriever_engine, llm_engine = load_rag_system()
     except Exception as e:
