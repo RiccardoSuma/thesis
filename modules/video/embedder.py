@@ -56,7 +56,7 @@ class Embedder:
             # A. Processo i Frame (Vision -> Text -> Vector)
             self.ingestor.process_video(video_path, video_name, fps_sample_rate=fps)
             
-            # B. Processiamo l'Audio (Text -> Vector con Nomic)
+            # B. Processo l'Audio (Text -> Vector con Nomic)
             # Passo i segmenti trascritti al nuovo ingestor che usa Nomic
             if transcription and 'segments' in transcription:
                 self.ingestor.process_transcript(transcription['segments'], video_name)
