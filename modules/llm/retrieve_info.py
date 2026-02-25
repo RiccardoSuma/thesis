@@ -228,6 +228,66 @@ class InfoRetriever:
             })
 
         return processed
+    
+    def gt_eval_ids(self, query_text: str, top_k: int) -> list:
+        """
+        Metodo per estrarre solo gli ID ordinati per rilevanza,
+        ottimizzato per il calcolo di nDCG, MRR e Recall.
+        """
+        english_query = self._translate_to_english(query_text)
+        vector_visual = self._encode(english_query)
+        vector_audio = self._encode(english_query)
+
+        combined_results = []
+        seen_ids = set()
+
+        # --- A. RICERCA VISUALE ---
+        visual_candidates = self.db.search(
+            query_vector=vector_visual,
+            top_k=30, 
+            query_filter=Filter(must=[FieldCondition(key="modality", match=MatchValue(value="visual"))]),
+            with_vectors=True
+        )
+
+        visual_pool = [{"point": p, "content": p.payload.get("text", "")} for p in visual_candidates if len(p.payload.get("text", "")) > 10]
+        scored_visuals = self._rerank_visual(english_query, visual_pool)
+        selected_visuals = self._mmr_selection(scored_visuals, top_k=4)
+
+        for item in selected_visuals:
+            point = item["point"]
+            combined_results.append({
+                "id": str(point.id),
+                "score": float(item.get("h_score", point.score)) # Uso lo score del reranker
+            })
+            seen_ids.add(point.id)
+
+        # --- B. RICERCA AUDIO ---
+        slots_left = top_k - len(combined_results) + 3
+        if slots_left > 0:
+            audio_candidates = self.db.search(
+                query_vector=vector_audio, 
+                top_k=slots_left,
+                query_filter=Filter(must=[FieldCondition(key="modality", match=MatchValue(value="audio"))]),
+                with_vectors=False
+            )
+
+            audio_pool = [{"point": p, "content": p.payload.get("text", "")} for p in audio_candidates if p.id not in seen_ids and len(p.payload.get("text", "")) > 10]
+            
+            scored_audio = self._rerank_visual(english_query, audio_pool) 
+            selected_audio = self._mmr_selection(scored_audio, top_k=slots_left)
+
+            for item in selected_audio:
+                point = item["point"]
+                combined_results.append({
+                    "id": str(point.id),
+                    "score": float(item.get("h_score", point.score))
+                })
+
+
+        combined_results.sort(key=lambda x: x["score"], reverse=True)
+
+        # Restituisco solo la lista piatta degli ID testuali, tagliata al top_k richiesto
+        return [res["id"] for res in combined_results][:top_k]
 
     def get_answer(self, query_text: str, top_k: int):
         print(f"\n🔍 Processing Query: {query_text}")
