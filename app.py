@@ -98,7 +98,7 @@ class UniBotGUI:
         """
         with st.spinner("🧠 Searching memory..."):
             # Recupero i payload 
-            context_payloads = self.retriever.get_answer(user_input, top_k=4)
+            context_payloads = self.retriever.get_answer(user_input, top_k=5)
             
             # Salvo nel session_state per l'expander delle fonti
             st.session_state["current_context"] = context_payloads

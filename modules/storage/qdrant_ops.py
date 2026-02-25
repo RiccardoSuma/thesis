@@ -58,7 +58,7 @@ def ensure_qdrant_running():
 
 
 class VectorDB:
-    def __init__(self, collection_name="abb_video_collection", vector_size=768): 
+    def __init__(self, collection_name="abb_video_collection_v2", vector_size=768): 
         self.client = QdrantClient(url="http://localhost:6333")
         self.collection_name = collection_name
         self.vector_size = vector_size
@@ -148,7 +148,7 @@ class VectorDB:
             with_vectors=with_vectors 
         ).points
 
-    def scroll(self, scroll_filter, limit=15):
+    def scroll(self, scroll_filter, limit):
         """
         Wrapper per lo scroll (necessario per la Sliding Window temporale).
         Restituisce (points, next_page_offset).

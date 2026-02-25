@@ -13,6 +13,58 @@ class InfoRetriever:
         self.embedder = NomicEmbedder(device=device)
         self._translation_cache = {}  # Cache per risparmiare chiamate a Ollama
 
+    def _enrich_audio_context(self, payload, window_seconds=15.0):
+
+        """
+        Prende un payload audio, interroga Qdrant per i chunk adiacenti (+/- window_seconds)
+        nello stesso video, e li unisce in un unico testo contestualizzato.
+        """
+        source_video = payload.get("source")
+        base_time = payload.get("timestamp")
+        
+        # Se non è audio o mancano metadati, restituisce il testo originale
+        if payload.get("modality") != "audio" or not source_video or base_time is None:
+            return payload.get("text", "")
+
+        # Creo il filtro temporale per Qdrant
+        # Stesso video, stesso tipo (audio), timestamp nel range [base - 15, base + 15]
+        time_filter = Filter(
+            must=[
+                FieldCondition(key="source", match=MatchValue(value=source_video)),
+                FieldCondition(key="modality", match=MatchValue(value="audio")),
+                FieldCondition(
+                    key="timestamp", 
+                    range=Range(
+                        gte=max(0.0, base_time - window_seconds), # Non scendere sotto lo zero
+                        lte=base_time + window_seconds
+                    )
+                )
+            ]
+        )
+
+
+
+        records, _ = self.db.scroll(
+            scroll_filter=time_filter,
+            limit=100 # 50 chunk sono circa 30-40 secondi di audio
+        )
+
+        if not records:
+            return payload.get("text", "")
+
+        # Ordino i chunk estratti per timestamp per ricostruire il discorso cronologico
+        sorted_records = sorted(records, key=lambda x: x.payload.get("timestamp", 0))
+
+        # Unisco i testi
+        enriched_text = " ".join([r.payload.get("text", "").strip() for r in sorted_records])
+        
+        # Aggiungo un tag per il debugging/LLM per fargli capire che è un blocco esteso
+        start_t = sorted_records[0].payload.get("timestamp", base_time)
+        end_t = sorted_records[-1].payload.get("timestamp", base_time)
+        
+        final_content = f"[Trascrizione continua da {start_t}s a {end_t}s]:\n{enriched_text}"
+        return final_content
+
     def _encode(self, text):
         """
         Genera l'embedding della query usando Nomic.
@@ -65,14 +117,6 @@ class InfoRetriever:
         norm = np.linalg.norm(v) + 1e-6
         return v / norm
 
-    def _is_sticky_content(self, text):
-        """Rileva contenuto 'inutile' o boilerplate."""
-        text_lower = text.lower()
-        if "edoardoragusa" in text_lower or "github.com" in text_lower:
-            return True
-        if text_lower.count("import ") > 4:
-            return True
-        return False
 
     def _mmr_selection(self, candidates, top_k, lambda_param=0.85): 
         """
@@ -168,13 +212,9 @@ class InfoRetriever:
             v_score = float(norm_scores[i])
             k_score = float(bm25_norm[i])
             
-            # Penalità per contenuti "sporchi"
-            penalty = 1.0
-            if self._is_sticky_content(cand["content"]):
-                penalty = 0.5
             
             # Score Ibrido Finale
-            hybrid = penalty * ((v_score * weight_vector) + (k_score * weight_bm25))
+            hybrid = ((v_score * weight_vector) + (k_score * weight_bm25))
 
             # Preparazione vettore per MMR
             raw_vec = getattr(cand["point"], "vector", None)
@@ -189,18 +229,16 @@ class InfoRetriever:
 
         return processed
 
-    def get_answer(self, query_text: str, top_k: int = 6):
+    def get_answer(self, query_text: str, top_k: int):
         print(f"\n🔍 Processing Query: {query_text}")
         
         # 1. Traduzione per ricerca visiva (Qwen è in Inglese)
         english_query = self._translate_to_english(query_text)
         print(f"   🇬🇧 Translated: {english_query}")
 
-        # 2. Embedding (Nomic gestisce sia ITA che ENG, ma meglio specializzare)
-        # Uso query ENG per le slide (descritte in ENG)
+        # 2. Embedding 
         vector_visual = self._encode(english_query)
-        # Uso query ITA per l'audio (trascritto in ITA)
-        vector_audio = self._encode(query_text)
+        vector_audio = self._encode(english_query)
 
         final_context = []
         seen_ids = set()
@@ -239,34 +277,46 @@ class InfoRetriever:
 
         # --- B. RICERCA AUDIO (TRASCRIZIONI) ---
         # Riempio lo spazio rimanente con l'audio
-        slots_left = top_k - len(final_context) + 2 # +2 di bonus
+        slots_left = top_k - len(final_context) + 3 # +2 di bonus
         
         if slots_left > 0:
             audio_candidates = self.db.search(
-                query_vector=vector_audio,
+                query_vector=vector_audio, 
                 top_k=slots_left,
                 query_filter=Filter(must=[FieldCondition(key="modality", match=MatchValue(value="audio"))]),
                 with_vectors=False
             )
 
+            audio_pool = []
             for anchor in audio_candidates:
                 if anchor.id in seen_ids: continue
-                
-                # Context Expansion: prendo anche i segmenti vicini
-                # (Semplificato qui: prendo solo il segmento stesso per ora, 
-                # la window expansion si può fare con scroll se necessario)
+                text = anchor.payload.get("text", "")
+                if len(text) > 10:
+                    audio_pool.append({"point": anchor, "content": text})
+
+            
+            scored_audio = self._rerank_visual(english_query, audio_pool)
+            
+            selected_audio = self._mmr_selection(scored_audio, top_k=slots_left)
+
+            # 5. Context Expansion solo sui "Vincitori"
+            for item in selected_audio:
+                anchor = item["point"]
                 p = anchor.payload
-                text = p.get("text", "")
                 
-                if len(text) > 15:
+                # Chiamo la funzione che interroga Qdrant per prendere +/- 15 secondi.
+                expanded_text = self._enrich_audio_context(p, window_seconds=30.0)
+                
+                # Controllo di sicurezza
+                if len(expanded_text) > 15:
                     final_context.append({
                         "source": p.get("source"),
-                        "timestamp": p.get("timestamp"),
+                        "timestamp": p.get("timestamp"), # Timestamp del chunk "ancora"
                         "modality": "AUDIO",
                         "score": float(anchor.score),
-                        "content_to_use": text,
+                        "content_to_use": expanded_text, # Passiamo il testo espanso al LLM!
                     })
                     seen_ids.add(anchor.id)
 
-        # Ordino per timestamp per coerenza narrativa
+        # Ordino per timestamp per coerenza narrativa (aiuta il LLM a leggere in ordine cronologico)
         return sorted(final_context, key=lambda x: (x["source"], x["timestamp"]))

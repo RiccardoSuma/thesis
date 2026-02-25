@@ -41,8 +41,14 @@ class LlamaProcessor:
 
         # --- Prompt anti-ripetizione ---
         prompt = f"""
-        Sei ABBot, un assistente per il supporto tecnico industriale.
-        Il tuo compito è sintetizzare una risposta FLUIDA e NON RIPETITIVA basata sui frammenti forniti.
+        Sei un Senior Engineer di ABB che assiste altri ingegneri.
+        Ti verranno forniti dei frammenti di trascrizioni audio e slide (Contesto).
+        I frammenti audio possono contenere linguaggio parlato frammentato o rumore.
+
+        REGOLA D'ORO:
+        Analizza attentamente TUTTO il contesto fornito. Non limitarti a una risposta secca. 
+        Costruisci una spiegazione tecnica dettagliata, articolata e discorsiva. Se ci sono passaggi tecnici o parametri, elencali in modo strutturato.
+        Se il contesto include esempi o motivazioni, includili nella tua risposta.
 
         DATI (XML):
         {xml_context}
@@ -67,10 +73,12 @@ class LlamaProcessor:
             * Usa il testo [VISUAL] per definire i termini esatti.
             * Usa il testo [AUDIO] per spiegare il "perché" e il funzionamento.
 
-        4.  **CITAZIONI:** Ogni affermazione deve avere la sua fonte [File: ..., Time: ...]. Se una frase riassume più chunk, metti tutte le fonti pertinenti alla fine della frase.
+        4.  **CITAZIONI:** Ogni affermazione deve avere la sua fonte [File: ..., Time: mm:ss]. Se una frase riassume più chunk, metti tutte le fonti pertinenti alla fine della frase.
 
-        Genera la risposta in Italiano:
-        """
+        Genera la risposta seguendo queste regole. Non iniziare MAI la tua risposta dicendo 'Il materiale non è sufficiente' o frasi simili, dillo solo se il contesto ti permetterebbe di rispondere solo allucinando. 
+        Se il contesto non contiene la risposta esatta al 100%, usa le informazioni disponibili per formulare l'ipotesi più tecnica e pertinente possibile, iniziando direttamente con l'analisi tecnica. 
+        Se il contesto parla di argomenti correlati, usali per spiegare i meccanismi sottostanti. La risposta deve essere nella stessa lingua della domanda:
+                """
 
         stream = ollama.chat(
             model=self.model_name,

@@ -40,7 +40,7 @@ class videoTranscriber:
         try:
             result = self.model.transcribe(
                 audio_path,
-                language="it",     
+                language="en",     
                 fp16=use_fp16,
                 verbose=False,     
                 temperature=0,     # Greedy

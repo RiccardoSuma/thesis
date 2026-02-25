@@ -7,7 +7,7 @@ from modules.video.video_processing import VideoIngestor
 from modules.audio.video_transcribe import videoTranscriber
 
 class Embedder:
-    def __init__(self, collection_name="video_collection"):
+    def __init__(self, collection_name):
         # Nota: VectorDB ora usa size=768 di default per Nomic
         self.db = VectorDB(collection_name=collection_name)
         self.transcriber = None

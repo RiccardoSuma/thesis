@@ -12,3 +12,4 @@ __pycache__/
 data/audios/
 data/videos/
 qdrant_data/
+temp_frames/
