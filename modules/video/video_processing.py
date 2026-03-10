@@ -25,15 +25,15 @@ class VideoIngestor:
                 device_map="cuda", 
                 torch_dtype=torch.float16, # <-- Usa bfloat16 se supportato (altrimenti float16)
                 attn_implementation="sdpa",
-                local_files_only=True
+                local_files_only=False
             )
-            self.processor = AutoProcessor.from_pretrained(model_id, min_pixels=256*28*28, max_pixels=640*28*28, local_files_only=True)
+            self.processor = AutoProcessor.from_pretrained(model_id, min_pixels=256*28*28, max_pixels=1024*1024, local_files_only=False)
             print("✅ Model Loaded.")
         except Exception as e:
             print(f"❌ Error loading model: {e}")
             raise e
 
-    def _generate_descriptions_native(self, frame_data_list, batch_size=2):
+    def _generate_descriptions_native(self, frame_data_list, batch_size=6):
         if not frame_data_list: return []
         self._load_model_if_needed()
         results = []

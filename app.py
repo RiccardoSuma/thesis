@@ -71,18 +71,18 @@ def ensure_ollama_started():
 @st.cache_resource
 def load_rag_system():
     # Inizializzo il DB
-    db = VectorDB(collection_name="abb_video_collection")
+    db = VectorDB(collection_name="uni_video_collection")
     
     # Inizializzo il Retriever
     retriever = InfoRetriever(db_wrapper=db)
     
     # Inizializzo il LLM (Mistral o Llama3)
-    llm = LlamaProcessor(model_name="qwen2.5")
+    llm = LlamaProcessor(model_name="deepseek-r1:14b")
     
     return retriever, llm
 
 class UniBotGUI:
-    def __init__(self, retriever, llm, bot_name="ABBot"):
+    def __init__(self, retriever, llm, bot_name="UniBot"):
         self.bot_name = bot_name
         self.retriever = retriever
         self.llm = llm

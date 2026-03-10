@@ -91,7 +91,7 @@ class InfoRetriever:
         try:
             # Usiamo un modello piccolo per la traduzione rapida
             response = ollama.chat(
-                model="mistral", # o "llama3" o "gemma"
+                model="deepseek-r1:14b", # o "llama3" o "gemma"
                 messages=[{
                     "role": "user",
                     "content": (
